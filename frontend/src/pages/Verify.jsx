@@ -33,6 +33,25 @@ const Verify = () => {
         }
     }
 
+    // useEffect(()=>{
+    //     if (token && success === 'true' && orderId) {
+    //         verifyPayment()
+    //     } else {
+    //         navigate('/cart')
+    //     }
+    
+    // }, [token])
+
+
+useEffect(() => {
+    if (token && orderId) {
+        verifyPayment()
+    } else {
+        navigate('/cart')
+    }
+}, [token])
+
+
   return (
     <div>
       

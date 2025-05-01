@@ -50,7 +50,7 @@ const placeOrderStripe = async (req , res) =>{
             items,
             adress,
             amount,
-            paymentMethod:'Stripe',
+            paymentMethod:'stripe',
             payment:false,
             date: Date.now()
             }
@@ -82,10 +82,12 @@ const placeOrderStripe = async (req , res) =>{
 
             const session = await stripe.checkout.sessions.create({
                 success_url: `${origin}/verify?success=true&orderId=${newOrder._id}`,
-                cancel_url:`${origin}/verify?success=true&orderId=${newOrder._id}`,
+                cancel_url:`${origin}/verify?success=false&orderId=${newOrder._id}`,
                 line_items,
                 mode: 'payment',
             })
+            
+            
 
             res.json({success:true,session_url:session.url})
 
@@ -96,24 +98,63 @@ const placeOrderStripe = async (req , res) =>{
     }
 }
 
-const verifyStripe = async (req,res) =>{
-    const {orderId , success , userId} = req.body
+const verifyStripe = async (req, res) => {
+    const { orderId, success } = req.body;
 
     try {
-        if(success === true){
-            await orderModel.findByIdAndUpdate(orderId , {payment:true})
-            await userModel.findByIdAndUpdate(userId, {cartDAta: {}})
-            res.json({success:true})
-        }else{
-            await orderModel.findByIdAndDelete(orderId)
-            res.json({success:false})
+        const order = await orderModel.findById(orderId);
+
+        if (!order) {
+            return res.status(400).json({ success: false, message: 'Orden no encontrada' });
+        }
+
+        // Si success es 'false' significa que el usuario canceló el pago, entonces eliminamos la orden
+        if (success === 'false') {
+            await orderModel.findByIdAndDelete(orderId);
+            return res.json({ success: false, message: 'Pago cancelado por el usuario' });
+        }
+
+        // Si success es 'true', verificamos si el pago se completó en Stripe
+        const session = await stripe.checkout.sessions.retrieve(order.stripeSessionId);
+
+        if (session.payment_status === 'paid') {
+            // Si el pago fue completado, actualizamos la orden
+            order.payment = true;
+            await order.save();
+
+            // Limpiar el carrito solo si el pago fue exitoso
+            await userModel.findByIdAndUpdate(order.userId, { cartData: {} });
+
+            return res.json({ success: true });
+        } else {
+            // Si el pago no fue exitoso, eliminamos la orden
+            await orderModel.findByIdAndDelete(orderId);
+            return res.json({ success: false, message: 'Pago no confirmado por Stripe' });
         }
     } catch (error) {
-        console.log(error)
-        res.json({success:false , message:error.message})
-        
+        console.error(error);
+        return res.status(500).json({ success: false, message: error.message });
     }
 }
+
+// const verifyStripe = async (req,res) =>{
+//     const {orderId , success , userId} = req.body
+
+//     try {
+//         if(success === "true"){
+//             await orderModel.findByIdAndUpdate(orderId , {payment:true})
+//             await userModel.findByIdAndUpdate(userId, {cartData: {}})
+//             res.json({success:true})
+//         }else{
+//             await orderModel.findByIdAndDelete(orderId)
+//             res.json({success:false})
+//         }
+//     } catch (error) {
+//         console.log(error)
+//         res.json({success:false , message:error.message})
+        
+//     }
+// }
 
 const placeOrderRazorpay = async (req , res) =>{
     
